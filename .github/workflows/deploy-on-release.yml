@@ -1,28 +1,59 @@
-name: Deploy to Production on Release
+name: Deploy on Release PR
 
 on:
-  release:
-    types: [created]
+    pull_request:
+        branches:
+            - main
 
 permissions:
-  pages: write
-  deployments: write
-  id-token: write
+    contents: read
 
 jobs:
-  deploy:
-    if: ${{ github.event.release.target_commitish == 'production' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-      - uses: actions/deploy-pages@v4
+    lint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                node-version: 22
+                cache: npm
+            - run: npm ci
+            - run: npm run lint
+    
+    build:
+        needs: lint
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                node-version: 22
+                cache: npm
+            - run: npm ci
+            - run: npm run build
+
+            - name: Create GitHub deployment
+              id: create_deploy
+              uses: chrnorm/deployment-action@v2    
+              with:
+                token: ${{ github.token }}
+                environment: production
+                description: "Deploy Pages for release ${{ github.ref_name }}"
+
+            - name: Mark deployment success
+              if: success()
+              uses: chrnorm/deployment-status@v2
+              with:
+                token: ${{ github.token }}
+                deployment-id: ${{ steps.create_deploy.outputs.deployment_id }}
+                environment: production
+                state: success
+
+            - name: Mark deployment failure
+              if: failure()
+              uses: chrnorm/deployment-status@v2
+              with:
+                token: ${{ github.token }}
+                deployment-id: ${{ steps.create_deploy.outputs.deployment_id }}
+                environment: production
+                state: failure
